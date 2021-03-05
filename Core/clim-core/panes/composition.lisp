@@ -1537,29 +1537,29 @@ SCROLLER-PANE appear on the ergonomic left hand side, or leave set to
            (gadget-min-value scroll-bar)
            (gadget-max-value scroll-bar)))))
 
-(defmethod pane-viewport ((pane basic-pane))
+(defmethod pane-viewport ((pane sheet))
   (when-let ((parent (sheet-parent pane)))
-    (when (typep parent 'viewport-pane)
-      parent)))
+    (if (typep parent 'viewport-pane)
+        parent
+        (pane-viewport parent))))
 
-;;; Default for streams that aren't even panes.
-
-(defmethod pane-viewport-region ((pane t))
-  nil)
-
-(defmethod pane-viewport-region ((pane basic-pane))
+(defmethod pane-viewport-region ((pane sheet))
   (when-let ((viewport (pane-viewport pane)))
     (untransform-region (sheet-delta-transformation pane viewport)
                         (sheet-region viewport))))
 
-(defmethod pane-scroller ((pane basic-pane))
+(defmethod pane-scroller ((pane sheet))
   (when-let ((viewport (pane-viewport pane)))
     (sheet-parent viewport)))
 
-(defmethod scroll-extent ((pane basic-pane) x y)
-  (when (pane-viewport pane)
-    (move-sheet pane (- x) (- y))
-    (when-let  ((scroller (pane-scroller pane)))
+(defmethod scroll-extent ((pane sheet) x y)
+  (when-let ((viewport (pane-viewport pane)))
+    (let* ((scroller (sheet-parent viewport))
+           (scrollee (sheet-child viewport))
+           (transf (sheet-delta-transformation pane scrollee)))
+      (multiple-value-bind (x y)
+          (transform-position transf x y)
+        (move-sheet scrollee (- x) (- y)))
       (scroller-pane/update-scroll-bars scroller))))
 
 
@@ -1730,10 +1730,8 @@ SCROLLER-PANE appear on the ergonomic left hand side, or leave set to
 (defmethod handle-event ((sheet mouse-wheel-scroll-mixin)
                          (event pointer-scroll-event))
   (if (zerop (event-modifier-state event))
-      (multiple-value-bind (viewport sheet*)
-          (find-viewport-for-scroll sheet)
-        (when viewport
-          (scroll-sheet sheet*
-                        (pointer-event-delta-x event)
-                        (pointer-event-delta-y event))))
+      (when-let ((viewport (pane-viewport sheet)))
+        (scroll-sheet (sheet-child viewport)
+                      (pointer-event-delta-x event)
+                      (pointer-event-delta-y event)))
       (call-next-method)))
